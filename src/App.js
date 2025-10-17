@@ -129,4 +129,95 @@ function App() {
     public record Product { public int Id { get; set; } public string Name { get; set; } = ""; public decimal Price { get; set; } }
 }
 
-export default App;
+export default <div class="customer-search">
+    <input @bind="Name" placeholder="Tên khách hàng" />
+    <input @bind="Email" placeholder="Email" />
+    <button @onclick="() => OnSearch.InvokeAsync(new CustomerSearchCondition { Name = Name, Email = Email })">
+        Tìm kiếm
+    </button>
+</div>
+
+@code {
+    [Parameter] public EventCallback<object?> OnSearch { get; set; }
+
+    private string Name = "";
+    private string Email = "";
+}
+
+public class CustomerSearchCondition
+{
+    public string? Name { get; set; }
+    public string? Email { get; set; }
+}
+
+
+
+
+
+@typeparam TEntity
+
+@if (data == null)
+{
+    <p><em>Đang tải dữ liệu...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                @foreach (var prop in props)
+                {
+                    <th>@prop.Name</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in data)
+            {
+                <tr>
+                    @foreach (var prop in props)
+                    {
+                        <td>@prop.GetValue(item)</td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter] public Func<object?, Task<IEnumerable<object>>>? LoadData { get; set; }
+
+    private List<TEntity>? data;
+    private List<System.Reflection.PropertyInfo> props = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (LoadData != null)
+        {
+            var raw = await LoadData(null);
+            data = raw.Cast<TEntity>().ToList();
+            props = typeof(TEntity).GetProperties().ToList();
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
