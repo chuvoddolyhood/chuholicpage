@@ -1,204 +1,197 @@
-function App() {
-  return (
-    <>
-      <p>hello friend</p>
-    </>
-  );
-}@page "/list/{tableName}"
-@inject NavigationManager Nav
+@page "/listpage/{tableId}"
+@using System.Text
+@using System.Text.Json
+@using YourApp.Shared.Models
+@using YourApp.Client.Pages
+@inject HttpClient Http
+@inject IJSRuntime JS
 
-<h3>@tableName List</h3>
+<PageTitle>Dynamic List Page</PageTitle>
 
-@if (searchType != null)
+@if (!isInitialized)
 {
-    <DynamicComponent Type="@searchType"
-                      Parameters="@searchParams" />
-}
-
-@if (gridType != null)
-{
-    <DynamicComponent Type="@gridType"
-                      Parameters="@gridParams" />
-}
-
-@code {
-    [Parameter] public string? tableName { get; set; }
-
-    private Type? searchType;
-    private Type? gridType;
-    private Dictionary<string, object>? searchParams;
-    private Dictionary<string, object>? gridParams;
-
-    private object? searchCondition;
-
-    protected override void OnParametersSet()
-    {
-        switch (tableName?.ToLower())
-        {
-            case "customer":
-                searchType = typeof(CustomerSearch);
-                gridType = typeof(GenericGrid<Customer>);
-                break;
-            case "company":
-                searchType = typeof(CompanySearch);
-                gridType = typeof(GenericGrid<Company>);
-                break;
-            case "product":
-                searchType = typeof(ProductSearch);
-                gridType = typeof(GenericGrid<Product>);
-                break;
-        }
-
-        // Cấu hình parameter cho search
-        searchParams = new()
-        {
-            ["OnSearch"] = EventCallback.Factory.Create<object?>(this, OnSearch)
-        };
-
-        // Cấu hình parameter cho grid
-        gridParams = new()
-        {
-            ["LoadData"] = (Func<object?, Task<IEnumerable<object>>>)LoadDataAsync
-        };
-    }
-
-    // Callback khi người dùng bấm “Tìm kiếm”
-    private void OnSearch(object? condition)
-    {
-        searchCondition = condition;
-        StateHasChanged();
-    }
-
-    // Hàm load dữ liệu theo điều kiện (dùng chung)
-    private Task<IEnumerable<object>> LoadDataAsync(object? condition)
-    {
-        IEnumerable<object> result = [];
-
-        switch (tableName?.ToLower())
-        {
-            case "customer":
-                result = LoadCustomers(condition);
-                break;
-            case "company":
-                result = LoadCompanies(condition);
-                break;
-            case "product":
-                result = LoadProducts(condition);
-                break;
-        }
-
-        return Task.FromResult(result);
-    }
-
-    // Giả dữ liệu cho từng loại
-    private IEnumerable<Customer> LoadCustomers(object? cond)
-    {
-        var all = new List<Customer>
-        {
-            new() { Id = 1, Name = "Alice", Email = "a@ex.com" },
-            new() { Id = 2, Name = "Bob", Email = "b@ex.com" },
-            new() { Id = 3, Name = "Charlie", Email = "c@ex.com" }
-        };
-
-        if (cond is CustomerSearchCondition c)
-        {
-            if (!string.IsNullOrWhiteSpace(c.Name))
-                all = all.Where(x => x.Name.Contains(c.Name, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (!string.IsNullOrWhiteSpace(c.Email))
-                all = all.Where(x => x.Email.Contains(c.Email, StringComparison.OrdinalIgnoreCase)).ToList();
-        }
-
-        return all;
-    }
-
-    private IEnumerable<Company> LoadCompanies(object? _) => new[]
-    {
-        new Company { Id = 1, Name = "Apple", Country = "USA" },
-        new Company { Id = 2, Name = "Samsung", Country = "Korea" }
-    };
-
-    private IEnumerable<Product> LoadProducts(object? _) => new[]
-    {
-        new Product { Id = 1, Name = "Book", Price = 10 },
-        new Product { Id = 2, Name = "Pen", Price = 5 }
-    };
-
-    // Model ví dụ
-    public record Customer { public int Id { get; set; } public string Name { get; set; } = ""; public string Email { get; set; } = ""; }
-    public record Company { public int Id { get; set; } public string Name { get; set; } = ""; public string Country { get; set; } = ""; }
-    public record Product { public int Id { get; set; } public string Name { get; set; } = ""; public decimal Price { get; set; } }
-}
-
-export default <div class="customer-search">
-    <input @bind="Name" placeholder="Tên khách hàng" />
-    <input @bind="Email" placeholder="Email" />
-    <button @onclick="() => OnSearch.InvokeAsync(new CustomerSearchCondition { Name = Name, Email = Email })">
-        Tìm kiếm
-    </button>
-</div>
-
-@code {
-    [Parameter] public EventCallback<object?> OnSearch { get; set; }
-
-    private string Name = "";
-    private string Email = "";
-}
-
-public class CustomerSearchCondition
-{
-    public string? Name { get; set; }
-    public string? Email { get; set; }
-}
-
-
-
-
-
-@typeparam TEntity
-
-@if (data == null)
-{
-    <p><em>Đang tải dữ liệu...</em></p>
+    <p>Loading...</p>
 }
 else
 {
-    <table class="table">
-        <thead>
-            <tr>
-                @foreach (var prop in props)
-                {
-                    <th>@prop.Name</th>
-                }
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var item in data)
-            {
-                <tr>
-                    @foreach (var prop in props)
-                    {
-                        <td>@prop.GetValue(item)</td>
-                    }
-                </tr>
-            }
-        </tbody>
-    </table>
+    <div class="mb-3">
+        <DynamicComponent Type="searchType" Parameters="conditionParams" />
+    </div>
+
+    <div>
+        <DynamicComponent Type="gridType" Parameters="gridParams" />
+    </div>
 }
 
 @code {
-    [Parameter] public Func<object?, Task<IEnumerable<object>>>? LoadData { get; set; }
+    [Parameter] public string? tableId { get; set; }
 
-    private List<TEntity>? data;
-    private List<System.Reflection.PropertyInfo> props = [];
+    private Type? searchType;
+    private Type? gridType;
+    private object? currentConfig;
+    private Type? dtoType;
+    private string? apiUrl;
 
+    private Dictionary<string, object>? conditionParams;
+    private Dictionary<string, object>? gridParams;
+
+    private bool isInitialized = false;
+    private bool isSearchDisabled = true;
+    private bool isDownloadDisabled = true;
+
+    private LaunchParameters sessionParams = new();
+    private IEnumerable<object> currentData = new List<object>();
+
+    // ============================================================
+    // 1️⃣  PageMap - định nghĩa tất cả các trang động
+    // ============================================================
+    private static readonly Dictionary<string, PageConfig> PageMap = new()
+    {
+        ["101"] = new PageConfig
+        {
+            SearchType = typeof(CustomerSearch),
+            GridType = typeof(GenericGrid<MCustomerDto>),
+            ApiUrl = "api/Inquiry/GetCustomer",
+            DtoType = typeof(MCustomerDto),
+            Config = new CustomerGridConfig()
+        },
+        ["201"] = new PageConfig
+        {
+            SearchType = typeof(ProductSearch),
+            GridType = typeof(GenericGrid<MProductDto>),
+            ApiUrl = "api/Inquiry/GetProduct",
+            DtoType = typeof(MProductDto),
+            Config = new ProductGridConfig()
+        },
+        ["301"] = new PageConfig
+        {
+            SearchType = typeof(CompanySearch),
+            GridType = typeof(GenericGrid<MCompanyDto>),
+            ApiUrl = "api/Inquiry/GetCompany",
+            DtoType = typeof(MCompanyDto),
+            Config = new CompanyGridConfig()
+        }
+    };
+
+    // ============================================================
+    // 2️⃣  Khi tham số (tableId) thay đổi
+    // ============================================================
     protected override async Task OnParametersSetAsync()
     {
-        if (LoadData != null)
+        if (!string.IsNullOrEmpty(tableId) && PageMap.TryGetValue(tableId, out var pageConfig))
         {
-            var raw = await LoadData(null);
-            data = raw.Cast<TEntity>().ToList();
-            props = typeof(TEntity).GetProperties().ToList();
+            searchType = pageConfig.SearchType;
+            gridType = pageConfig.GridType;
+            currentConfig = pageConfig.Config;
+            apiUrl = pageConfig.ApiUrl;
+            dtoType = pageConfig.DtoType;
         }
+
+        BuildConditionParams();
+        BuildGridParams();
+
+        isInitialized = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ============================================================
+    // 3️⃣  Khi người dùng nhập input ở Search component
+    // ============================================================
+    private async Task OnInputChanged(object model)
+    {
+        isSearchDisabled = false;
+        isDownloadDisabled = true;
+        BuildConditionParams();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ============================================================
+    // 4️⃣  Khi người dùng nhấn Search
+    // ============================================================
+    private async Task OnSearch(SearchCondition model)
+    {
+        isSearchDisabled = true;
+        isDownloadDisabled = true;
+        BuildConditionParams();
+        await InvokeAsync(StateHasChanged);
+
+        if (string.IsNullOrEmpty(apiUrl)) return;
+
+        try
+        {
+            var jsonContent = JsonSerializer.Serialize(model);
+            var httpContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+            var response = await Http.PostAsync(apiUrl, httpContent);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var resultType = typeof(ProcessResponse<>).MakeGenericType(dtoType!);
+                var result = await response.Content.ReadFromJsonAsync(resultType);
+
+                currentData = ((dynamic)result)?.Data?.ToList<object>() ?? new List<object>();
+
+                if (currentData.Any())
+                    isDownloadDisabled = false;
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"API call failed: {response.StatusCode}");
+                currentData = new List<object>();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Lỗi khi tải dữ liệu: {ex.Message}");
+            currentData = new List<object>();
+        }
+
+        BuildConditionParams();
+        BuildGridParams();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ============================================================
+    // 5️⃣  Khi người dùng nhấn Download
+    // ============================================================
+    private async Task OnDownload(object model)
+    {
+        if (!currentData.Any())
+        {
+            await JS.InvokeVoidAsync("alert", "Không có dữ liệu để tải xuống.");
+            return;
+        }
+
+        await JS.InvokeVoidAsync("alert", "Bắt đầu tải dữ liệu...");
+        // TODO: Gọi API export nếu cần
+    }
+
+    // ============================================================
+    // 6️⃣  Tạo conditionParams truyền xuống DynamicComponent Search
+    // ============================================================
+    private void BuildConditionParams()
+    {
+        conditionParams = new()
+        {
+            ["OnSearch"] = EventCallback.Factory.Create<SearchCondition>(this, OnSearch),
+            ["OnInputChanged"] = EventCallback.Factory.Create<object>(this, OnInputChanged),
+            ["OnDownload"] = EventCallback.Factory.Create<object>(this, OnDownload),
+            ["sessionParams"] = sessionParams,
+            ["isSearchDisabled"] = isSearchDisabled,
+            ["isDownloadDisabled"] = isDownloadDisabled
+        };
+    }
+
+    // ============================================================
+    // 7️⃣  Tạo gridParams truyền xuống DynamicComponent Grid
+    // ============================================================
+    private void BuildGridParams()
+    {
+        gridParams = new()
+        {
+            ["DataSource"] = currentData,
+            ["Config"] = currentConfig
+        };
     }
 }
 
@@ -206,14 +199,112 @@ else
 
 
 
+@using YourApp.Shared.Models
 
+<Container MaxWidth="fluid">
+    <Grid Container="true" Spacing="2">
+        <Grid Item="true" xs="12" sm="4">
+            <label class="form-label">Customer Code</label>
+            <InputText @bind-Value="CustomerCode"
+                       @onchange="InputChanged"
+                       @onkeydown="HandleEnterKey"
+                       tabindex="1"
+                       class="form-control"
+                       placeholder="Enter customer code" />
+        </Grid>
 
+        <Grid Item="true" xs="12" sm="4">
+            <label class="form-label">Customer Name</label>
+            <InputText @bind-Value="CustomerName"
+                       @onchange="InputChanged"
+                       @onkeydown="HandleEnterKey"
+                       tabindex="2"
+                       class="form-control"
+                       placeholder="Enter customer name" />
+        </Grid>
 
+        <Grid Item="true" xs="12" sm="4">
+            <label class="form-label">Customer Name (EN)</label>
+            <InputText @bind-Value="CustomerNameEn"
+                       @onchange="InputChanged"
+                       @onkeydown="HandleEnterKey"
+                       tabindex="3"
+                       class="form-control"
+                       placeholder="Enter English name" />
+        </Grid>
 
+        <Grid Item="true" xs="12" class="mt-3">
+            <button class="btn btn-primary me-2"
+                    @onclick="Search"
+                    tabindex="4"
+                    disabled="@isSearchDisabled">
+                🔍 Search
+            </button>
 
+            <button class="btn btn-secondary"
+                    @onclick="Download"
+                    tabindex="5"
+                    disabled="@isDownloadDisabled">
+                ⬇️ Download
+            </button>
+        </Grid>
+    </Grid>
+</Container>
 
+@code {
+    [Parameter] public EventCallback<SearchCondition> OnSearch { get; set; }
+    [Parameter] public EventCallback<object> OnInputChanged { get; set; }
+    [Parameter] public EventCallback<object> OnDownload { get; set; }
+    [Parameter] public LaunchParameters? sessionParams { get; set; }
 
+    [Parameter] public bool isSearchDisabled { get; set; }
+    [Parameter] public bool isDownloadDisabled { get; set; }
 
+    private string? CustomerCode;
+    private string? CustomerName;
+    private string? CustomerNameEn;
+
+    private SearchCondition model = new();
+
+    private async Task InputChanged(ChangeEventArgs e)
+    {
+        model.CustomerCode = CustomerCode;
+        model.CustomerName = CustomerName;
+        model.CustomerNameEn = CustomerNameEn;
+
+        await OnInputChanged.InvokeAsync(model);
+    }
+
+    private async Task Search()
+    {
+        model.CustomerCode = CustomerCode;
+        model.CustomerName = CustomerName;
+        model.CustomerNameEn = CustomerNameEn;
+
+        await OnSearch.InvokeAsync(model);
+    }
+
+    private async Task Download()
+    {
+        await OnDownload.InvokeAsync(model);
+    }
+
+    private async Task HandleEnterKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !isSearchDisabled)
+        {
+            await Search();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (sessionParams != null)
+        {
+            // ví dụ gán giá trị mặc định
+        }
+    }
+}
 
 
 
