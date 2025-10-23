@@ -306,6 +306,68 @@ else
     }
 }
 
+m
+@inherits InputBase<DateTime?>
+
+<input type="text"
+       class="@CssClass"
+       value="@CurrentValueAsString"
+       placeholder="@Placeholder"
+       @onchange="OnChange"
+       @onblur="OnBlur"
+       @oninput="OnInput" />
+
+@code {
+    [Parameter] public string Placeholder { get; set; } = "YYYY-MM-DD";
+
+    // Format hiển thị mặc định (có thể đổi sang "dd/MM/yyyy" nếu muốn)
+    private const string DateFormat = "yyyy-MM-dd";
+
+    protected override string FormatValueAsString(DateTime? value)
+        => value.HasValue ? value.Value.ToString(DateFormat) : string.Empty;
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        // Gọi cập nhật tạm để hiện input ngay khi gõ
+        CurrentValueAsString = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OnChange(ChangeEventArgs e)
+    {
+        if (DateTime.TryParseExact(
+            e.Value?.ToString(),
+            DateFormat,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None,
+            out var parsed))
+        {
+            CurrentValue = parsed;
+        }
+        else
+        {
+            // Nếu nhập sai format, tạo thông báo lỗi validation
+            var fieldIdentifier = FieldIdentifier.Create(ValueExpression);
+            EditContext?.NotifyFieldChanged(fieldIdentifier);
+            EditContext?.AddValidationMessage(fieldIdentifier,
+                $"Vui lòng nhập đúng định dạng {DateFormat}");
+        }
+    }
+
+    private void OnBlur(FocusEventArgs e)
+    {
+        // Nếu bạn muốn xử lý gì thêm khi mất focus thì có thể thêm vào đây
+    }
+
+    // Áp dụng class giống InputDate (tự động đổi khi invalid)
+    protected override string CssClass =>
+        new CssBuilder("form-control")
+            .AddClass("is-invalid", EditContext?.GetValidationMessages(FieldIdentifier).Any() == true)
+            .AddClass(Class, !string.IsNullOrEmpty(Class))
+            .ToString();
+}
+
+
+
 
 
 
